@@ -23,6 +23,33 @@ CASES_DIR.mkdir(exist_ok=True)
 # Funkcje pomocnicze
 # ---------------------------------------------------------
 
+def load_case_data(case_file):
+    """
+    Wczytuje istniejącą sprawę z JSON
+    i odtwarza jej dane w Streamlit.
+    """
+
+    case_file = Path(case_file)
+
+    with open(case_file, "r", encoding="utf-8") as f:
+        case_data = json.load(f)
+
+    st.session_state.case_id = case_data["caseId"]
+    st.session_state.case_file = str(case_file)
+
+    st.session_state.case_number = case_data.get("caseNumber", "")
+    st.session_state.internal_number = case_data.get("internalNumber", "")
+    st.session_state.for_whom = case_data.get("forWhom", "")
+    st.session_state.case_description = case_data.get("case", "")
+    st.session_state.questions = case_data.get("questions", "")
+
+    st.session_state.evidence = case_data.get("evidence", [])
+
+    # Po wczytaniu zaczynamy od przeglądu dowodów.
+    st.session_state.step = 3
+    st.session_state.evidence_index = 0
+    st.session_state.measurement_index = 0
+
 def save_case_data():
     """
     Aktualizuje istniejący plik JSON sprawy.
@@ -35,7 +62,7 @@ def save_case_data():
     Zrobimy to w następnym kroku.
     """
 
-    if "case_file" not in st.session_state:
+    if not st.session_state.get("case_file"):
         return
 
     case_file = Path(st.session_state.case_file)
@@ -194,11 +221,61 @@ if "measurement_index" not in st.session_state:
 
 
 # ---------------------------------------------------------
-# Sidebar
+# Wybór zapisanej sprawy
 # ---------------------------------------------------------
 
-show_sidebar()
+if "case_file" not in st.session_state:
 
+    st.title("JARVIS — Kreator raportów")
+
+    st.subheader("Rozpocznij pracę")
+
+    saved_cases = sorted(
+        CASES_DIR.glob("*.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True
+    )
+
+    if saved_cases:
+
+        case_options = {}
+
+        for case_path in saved_cases:
+            try:
+                with open(case_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                case_number = data.get("caseNumber", "Bez sygnatury")
+                internal_number = data.get("internalNumber", "")
+
+                label = (
+                    f"{case_number} | {internal_number} "
+                    f"| {case_path.stem[:8]}"
+                )
+
+                case_options[label] = case_path
+
+            except (OSError, json.JSONDecodeError):
+                continue
+
+        if case_options:
+            selected_case = st.selectbox(
+                "Wybierz zapisaną sprawę",
+                options=list(case_options.keys())
+            )
+
+            if st.button("Wznów sprawę", type="primary"):
+                load_case_data(case_options[selected_case])
+                st.rerun()
+
+    st.divider()
+
+    if st.button("Nowa sprawa"):
+        st.session_state.case_file = None
+        st.session_state.step = 1
+        st.rerun()
+
+    st.stop()
 
 # =========================================================
 # KROK 1 — DANE SPRAWY
