@@ -23,6 +23,101 @@ CASES_DIR.mkdir(exist_ok=True)
 # Funkcje pomocnicze
 # ---------------------------------------------------------
 
+def save_current_form():
+    """
+    Zapisuje bieżące wartości formularza bez zatwierdzania.
+    Działa przy przechodzeniu między ekranami.
+    """
+
+    if not st.session_state.get("case_file"):
+        return
+
+    step = st.session_state.get("step")
+
+    if step == 1:
+        fields = {
+            "case_number": "caseNumber",
+            "internal_number": "internalNumber",
+            "for_whom": "forWhom",
+            "case_description": "case",
+            "questions": "questions",
+        }
+
+        case_file = Path(st.session_state.case_file)
+
+        with open(case_file, "r", encoding="utf-8") as f:
+            case_data = json.load(f)
+
+        # Te pola będą dostępne w session_state po nadaniu
+        # im jawnych kluczy w formularzu.
+        for state_key, json_key in fields.items():
+            if state_key in st.session_state:
+                case_data[json_key] = st.session_state[state_key]
+
+        with open(case_file, "w", encoding="utf-8") as f:
+            json.dump(case_data, f, ensure_ascii=False, indent=2)
+
+    elif step == 2:
+        index = st.session_state.get("evidence_index", 0)
+        evidence = st.session_state.evidence
+
+        if 0 <= index < len(evidence):
+            item = evidence[index]
+
+            number = st.session_state.get(f"evidence_number_{index}")
+            category = st.session_state.get(f"evidence_category_{index}")
+            description = st.session_state.get(f"evidence_description_{index}")
+
+            if number is not None:
+                item["number"] = number
+
+            if category is not None:
+                if item.get("category") != category:
+                    item.pop("measurement", None)
+                    item["approved"] = False
+
+                item["category"] = category
+
+            if description is not None:
+                item["description"] = description
+
+            save_case_data()
+
+    elif step == 4:
+        index = st.session_state.get("measurement_index", 0)
+        evidence = st.session_state.evidence
+
+        if 0 <= index < len(evidence):
+            item = evidence[index]
+            measurement = dict(item.get("measurement", {}))
+
+            if item.get("category") == "krzaki":
+                for widget_key, field in (
+                    (f"gross_flower_{index}", "grossFlower"),
+                    (f"net_stalk_{index}", "netStalk"),
+                    (f"net_root_{index}", "netRoot"),
+                ):
+                    if widget_key in st.session_state:
+                        measurement[field] = st.session_state[widget_key]
+            else:
+                key = f"gross_weight_{index}"
+                if key in st.session_state:
+                    measurement["grossWeight"] = st.session_state[key]
+
+            key = f"concentration_{index}"
+            if key in st.session_state:
+                measurement["substanceConcentration"] = st.session_state[key]
+
+            key = f"tested_{index}"
+            if key in st.session_state:
+                measurement["tested"] = (
+                    "y" if st.session_state[key] else ""
+                )
+
+            # Nie ustawiamy approved=True przy autosave.
+            item["measurement"] = measurement
+            save_case_data()
+
 def clear_case_widgets():
     """
     Czyści stan pól formularzy dowodów i pomiarów.
@@ -218,6 +313,7 @@ def show_sidebar():
             key="sidebar_back_to_cases",
             use_container_width=True
         ):
+            save_current_form()
             save_progress()
 
             # Czyścimy stan sesji, nie zapisane pliki JSON.
@@ -266,6 +362,7 @@ def show_sidebar():
                 elif step_number == 4:
                     st.session_state.measurement_index = 0
 
+                save_current_form()
                 st.session_state.step = step_number
                 save_progress()
                 st.rerun()
