@@ -23,6 +23,29 @@ CASES_DIR.mkdir(exist_ok=True)
 # Funkcje pomocnicze
 # ---------------------------------------------------------
 
+def clear_case_widgets():
+    """
+    Czyści stan pól formularzy dowodów i pomiarów.
+    Nie usuwa danych sprawy ani zapisów w JSON.
+    """
+
+    prefixes = (
+        "evidence_number_",
+        "evidence_category_",
+        "evidence_description_",
+        "gross_flower_",
+        "net_stalk_",
+        "net_root_",
+        "gross_weight_",
+        "substance_",
+        "concentration_",
+        "tested_",
+    )
+
+    for key in list(st.session_state.keys()):
+        if key.startswith(prefixes):
+            del st.session_state[key]
+
 def load_case_data(case_file):
     """
     Wczytuje istniejącą sprawę z JSON
@@ -49,6 +72,7 @@ def load_case_data(case_file):
     st.session_state.step = 3
     st.session_state.evidence_index = 0
     st.session_state.measurement_index = 0
+    clear_case_widgets()
 
 def save_case_data():
     """
@@ -637,6 +661,7 @@ elif st.session_state.step == 2:
             # mogą nie odpowiadać nowemu rodzajowi dowodu.
             if item["category"] != category:
                 item.pop("measurement", None)
+                clear_case_widgets()
 
             # Zapisujemy zaakceptowane dane dowodu.
             item["number"] = number
@@ -915,12 +940,6 @@ elif st.session_state.step == 4:
     # Dane wspólne
     # -----------------------------------------------------
 
-    substance = st.text_input(
-        "Substancja",
-        value=measurement.get("substance", ""),
-        key=f"substance_{index}"
-    )
-
     substance_concentration = st.number_input(
         "Stężenie",
         min_value=0.0,
@@ -989,7 +1008,6 @@ elif st.session_state.step == 4:
                     "grossFlower": gross_flower,
                     "netStalk": net_stalk,
                     "netRoot": net_root,
-                    "substance": substance,
                     "substanceConcentration": substance_concentration,
                     "tested": tested,
                     "approved": True
@@ -999,7 +1017,6 @@ elif st.session_state.step == 4:
 
                 measurement = {
                     "grossWeight": gross_weight,
-                    "substance": substance,
                     "substanceConcentration": substance_concentration,
                     "tested": tested,
                     "approved": True
