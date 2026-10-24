@@ -69,9 +69,11 @@ def load_case_data(case_file):
     st.session_state.evidence = case_data.get("evidence", [])
 
     # Po wczytaniu zaczynamy od przeglądu dowodów.
-    st.session_state.step = 3
-    st.session_state.evidence_index = 0
-    st.session_state.measurement_index = 0
+    progress = case_data.get("progress", {})
+
+    st.session_state.step = progress.get("step", 3)
+    st.session_state.evidence_index = progress.get("evidenceIndex", 0)
+    st.session_state.measurement_index = progress.get("measurementIndex", 0)
     clear_case_widgets()
 
 def save_case_data():
@@ -124,6 +126,30 @@ def save_measurement(index, measurement):
     st.session_state.evidence[index]["measurement"] = measurement
 
     save_case_data()
+
+def save_progress():
+    """
+    Zapisuje aktualny etap kreatora i indeksy dowodów.
+    Nie modyfikuje danych merytorycznych sprawy.
+    """
+    case_file = st.session_state.get("case_file")
+
+    if not case_file:
+        return
+
+    case_file = Path(case_file)
+
+    with open(case_file, "r", encoding="utf-8") as f:
+        case_data = json.load(f)
+
+    case_data["progress"] = {
+        "step": st.session_state.step,
+        "evidenceIndex": st.session_state.get("evidence_index", 0),
+        "measurementIndex": st.session_state.get("measurement_index", 0),
+    }
+
+    with open(case_file, "w", encoding="utf-8") as f:
+        json.dump(case_data, f, ensure_ascii=False, indent=2)
 
 def show_sidebar():
     """
@@ -192,6 +218,8 @@ def show_sidebar():
             key="sidebar_back_to_cases",
             use_container_width=True
         ):
+            save_progress()
+
             # Czyścimy stan sesji, nie zapisane pliki JSON.
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
@@ -212,7 +240,7 @@ def show_sidebar():
         for step_number, step_name in steps:
 
             if step_number == current_step:
-                label = f"● {step_name}"
+                label = f"▶ {step_name} (aktualny)"
 
             elif completed[step_number]:
                 label = f"✓ {step_name}"
@@ -239,6 +267,7 @@ def show_sidebar():
                     st.session_state.measurement_index = 0
 
                 st.session_state.step = step_number
+                save_progress()
                 st.rerun()
 
         st.divider()
