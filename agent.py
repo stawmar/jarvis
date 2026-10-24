@@ -633,7 +633,12 @@ elif st.session_state.step == 2:
             key="step2_next"
         ):
 
-            # Zapisujemy ewentualne poprawki.
+            # Jeśli zmieniono kategorię, dotychczasowe pomiary
+            # mogą nie odpowiadać nowemu rodzajowi dowodu.
+            if item["category"] != category:
+                item.pop("measurement", None)
+
+            # Zapisujemy zaakceptowane dane dowodu.
             item["number"] = number
             item["category"] = category
             item["description"] = description
