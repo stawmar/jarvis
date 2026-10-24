@@ -103,59 +103,122 @@ def save_measurement(index, measurement):
 
 def show_sidebar():
     """
-    Pokazuje stałą nawigację po lewej stronie.
+    Nawigacja JARVIS-a.
 
-    Na razie sidebar jest tylko wskaźnikiem postępu.
-    Nie pozwalamy jeszcze przeskakiwać pomiędzy etapami.
+    - Powrót do listy spraw.
+    - Wyświetlanie postępu.
+    - Przechodzenie do dostępnych etapów.
+    - Blokowanie etapów jeszcze niedostępnych.
     """
 
+    current_step = st.session_state.step
+    evidence = st.session_state.get("evidence", [])
+
+    has_case = bool(st.session_state.get("case_file"))
+
+    all_evidence_approved = bool(evidence) and all(
+        item.get("approved", False)
+        for item in evidence
+    )
+
+    all_measurements_approved = bool(evidence) and all(
+        item.get("measurement", {}).get("approved", False)
+        for item in evidence
+    )
+
+    steps = [
+        (1, "Dane sprawy"),
+        (2, "Dowody"),
+        (3, "Podsumowanie dowodów"),
+        (4, "Dane pomiarowe"),
+        (5, "Zdjęcia"),
+        (6, "FID"),
+        (7, "Podsumowanie"),
+        (8, "Raport"),
+    ]
+
+    # Dostępność ekranów
+    available = {
+        1: True,
+        2: has_case,
+        3: all_evidence_approved,
+        4: all_evidence_approved,
+        5: False,
+        6: False,
+        7: False,
+        8: False,
+    }
+
+    # Faktycznie ukończone etapy
+    completed = {
+        1: has_case,
+        2: all_evidence_approved,
+        3: all_evidence_approved,
+        4: all_measurements_approved,
+        5: False,
+        6: False,
+        7: False,
+        8: False,
+    }
+
     with st.sidebar:
+
+        if st.button(
+            "← Lista spraw",
+            key="sidebar_back_to_cases",
+            use_container_width=True
+        ):
+            # Czyścimy stan sesji, nie zapisane pliki JSON.
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+
+            st.rerun()
+
+        st.divider()
 
         st.subheader("Sprawa")
 
         case_number = st.session_state.get(
-            "case_number",
-            "Nowa sprawa"
+            "case_number", "Nowa sprawa"
         )
 
         st.write(f"**{case_number}**")
-
         st.divider()
-
-        current_step = st.session_state.step
-
-        steps = [
-            (1, "Dane sprawy"),
-            (2, "Dowody"),
-            (3, "Podsumowanie dowodów"),
-            (4, "Dane pomiarowe"),
-            (5, "Zdjęcia"),
-            (6, "FID"),
-            (7, "Podsumowanie"),
-            (8, "Raport"),
-        ]
 
         for step_number, step_name in steps:
 
-            # Etapy 5-8 nie są jeszcze zaimplementowane.
-            if step_number > 4:
-                icon = "○"
+            if step_number == current_step:
+                label = f"● {step_name}"
 
-            elif step_number < current_step:
-                icon = "✓"
-
-            elif step_number == current_step:
-                icon = "●"
+            elif completed[step_number]:
+                label = f"✓ {step_name}"
 
             else:
-                icon = "○"
+                label = f"○ {step_name}"
 
-            st.write(f"{icon} {step_name}")
+            if st.button(
+                label,
+                key=f"sidebar_step_{step_number}",
+                disabled=(
+                    not available[step_number]
+                    or step_number == current_step
+                ),
+                use_container_width=True
+            ):
+
+                if step_number == 2:
+                    st.session_state.evidence_index = 0
+                    st.session_state.edit_return_to = None
+                    st.session_state.edit_from_summary = False
+
+                elif step_number == 4:
+                    st.session_state.measurement_index = 0
+
+                st.session_state.step = step_number
+                st.rerun()
 
         st.divider()
 
-        # Ignorowanie sprawy jest dostępne niezależnie
-        # od aktualnego miejsca w kreatorze.
         if st.button(
             "Ignoruj sprawę",
             key="sidebar_ignore_case",
@@ -165,7 +228,6 @@ def show_sidebar():
                 "Sprawa zostanie pominięta. "
                 "Pliki źródłowe pozostaną bez zmian."
             )
-
 
 # ---------------------------------------------------------
 # Stan kreatora
@@ -367,29 +429,35 @@ if st.session_state.step == 1:
             st.session_state.case_description = case_description
             st.session_state.questions = questions
 
-            # Rekord sprawy.
-            case_data = {
-                "caseId": st.session_state.case_id,
-                "caseNumber": case_number,
-                "internalNumber": internal_number,
-                "forWhom": for_whom,
-                "case": case_description,
-                "questions": questions,
-                "status": "IN_REVIEW"
-            }
+            # Sprawdzamy, czy edytujemy istniejącą sprawę.
+            existing_file = st.session_state.get("case_file")
 
-            # Plik jest związany ze stałym ID technicznym,
-            # a nie z edytowalną sygnaturą.
-            case_file = (
-                CASES_DIR /
-                f"{st.session_state.case_id}.json"
-            )
+            if existing_file:
+                # Aktualizujemy istniejącą sprawę.
+                # Zachowujemy dowody, pomiary i pozostałe dane.
+                case_file = Path(existing_file)
 
-            with open(
-                case_file,
-                "w",
-                encoding="utf-8"
-            ) as f:
+                with open(case_file, "r", encoding="utf-8") as f:
+                    case_data = json.load(f)
+
+            else:
+                # Tworzymy nową sprawę.
+                case_file = CASES_DIR / f"{st.session_state.case_id}.json"
+
+                case_data = {
+                    "caseId": st.session_state.case_id,
+                    "status": "IN_REVIEW",
+                    "evidence": st.session_state.evidence
+                }
+
+            # Aktualizujemy tylko dane podstawowe.
+            case_data["caseNumber"] = case_number
+            case_data["internalNumber"] = internal_number
+            case_data["forWhom"] = for_whom
+            case_data["case"] = case_description
+            case_data["questions"] = questions
+
+            with open(case_file, "w", encoding="utf-8") as f:
                 json.dump(
                     case_data,
                     f,
