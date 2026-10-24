@@ -24,73 +24,51 @@ CASES_DIR.mkdir(exist_ok=True)
 # ---------------------------------------------------------
 
 def save_current_form():
-    """
-    Zapisuje bieżące wartości formularza bez zatwierdzania.
-    Działa przy przechodzeniu między ekranami.
-    """
-
+    """Zapisuje wartości widocznego formularza bez zmiany statusu zatwierdzenia."""
     if not st.session_state.get("case_file"):
         return
 
     step = st.session_state.get("step")
-
     if step == 1:
         fields = {
-            "case_number": "caseNumber",
-            "internal_number": "internalNumber",
-            "for_whom": "forWhom",
-            "case_description": "case",
-            "questions": "questions",
+            "form_case_number": "case_number",
+            "form_internal_number": "internal_number",
+            "form_for_whom": "for_whom",
+            "form_case_description": "case_description",
+            "form_questions": "questions",
         }
-
-        case_file = Path(st.session_state.case_file)
-
-        with open(case_file, "r", encoding="utf-8") as f:
-            case_data = json.load(f)
-
-        # Te pola będą dostępne w session_state po nadaniu
-        # im jawnych kluczy w formularzu.
-        for state_key, json_key in fields.items():
-            if state_key in st.session_state:
-                case_data[json_key] = st.session_state[state_key]
-
-        with open(case_file, "w", encoding="utf-8") as f:
-            json.dump(case_data, f, ensure_ascii=False, indent=2)
+        for widget_key, state_key in fields.items():
+            if widget_key in st.session_state:
+                st.session_state[state_key] = st.session_state[widget_key]
+        save_case_data()
 
     elif step == 2:
         index = st.session_state.get("evidence_index", 0)
         evidence = st.session_state.evidence
-
         if 0 <= index < len(evidence):
             item = evidence[index]
-
             number = st.session_state.get(f"evidence_number_{index}")
             category = st.session_state.get(f"evidence_category_{index}")
             description = st.session_state.get(f"evidence_description_{index}")
 
             if number is not None:
                 item["number"] = number
-
             if category is not None:
                 if item.get("category") != category:
                     item.pop("measurement", None)
                     item["approved"] = False
-
+                    clear_measurement_widgets(index)
                 item["category"] = category
-
             if description is not None:
                 item["description"] = description
-
             save_case_data()
 
     elif step == 4:
         index = st.session_state.get("measurement_index", 0)
         evidence = st.session_state.evidence
-
         if 0 <= index < len(evidence):
             item = evidence[index]
             measurement = dict(item.get("measurement", {}))
-
             if item.get("category") == "krzaki":
                 for widget_key, field in (
                     (f"gross_flower_{index}", "grossFlower"),
@@ -107,16 +85,26 @@ def save_current_form():
             key = f"concentration_{index}"
             if key in st.session_state:
                 measurement["substanceConcentration"] = st.session_state[key]
-
             key = f"tested_{index}"
             if key in st.session_state:
-                measurement["tested"] = (
-                    "y" if st.session_state[key] else ""
-                )
+                measurement["tested"] = "y" if st.session_state[key] else ""
 
-            # Nie ustawiamy approved=True przy autosave.
+            # Zmiana zatwierdzonego pomiaru wymaga ponownego zatwierdzenia.
+            old_values = {k: v for k, v in item.get("measurement", {}).items()
+                          if k != "approved"}
+            new_values = {k: v for k, v in measurement.items() if k != "approved"}
+            if old_values != new_values:
+                measurement["approved"] = False
             item["measurement"] = measurement
             save_case_data()
+
+
+def clear_measurement_widgets(index):
+    """Czyści wyłącznie pola pomiarowe wskazanego dowodu."""
+    for prefix in ("gross_flower_", "net_stalk_", "net_root_",
+                   "gross_weight_", "concentration_", "tested_"):
+        st.session_state.pop(f"{prefix}{index}", None)
+
 
 def clear_case_widgets():
     """
@@ -125,6 +113,7 @@ def clear_case_widgets():
     """
 
     prefixes = (
+        "form_",
         "evidence_number_",
         "evidence_category_",
         "evidence_description_",
@@ -132,7 +121,6 @@ def clear_case_widgets():
         "net_stalk_",
         "net_root_",
         "gross_weight_",
-        "substance_",
         "concentration_",
         "tested_",
     )
@@ -170,17 +158,15 @@ def load_case_data(case_file):
     st.session_state.evidence_index = progress.get("evidenceIndex", 0)
     st.session_state.measurement_index = progress.get("measurementIndex", 0)
     clear_case_widgets()
+    for key in ("form_case_number", "form_internal_number", "form_for_whom",
+                "form_case_description", "form_questions"):
+        st.session_state.pop(key, None)
 
 def save_case_data():
     """
     Aktualizuje istniejący plik JSON sprawy.
 
-    Na tym etapie zapisujemy:
-    - dane sprawy,
-    - dowody rzeczowe.
-
-    Dane pomiarowe nie są jeszcze zapisywane do JSON.
-    Zrobimy to w następnym kroku.
+    Zapisuje dane sprawy, dowody i pomiary do istniejącego JSON-a.
     """
 
     if not st.session_state.get("case_file"):
@@ -354,6 +340,8 @@ def show_sidebar():
                 use_container_width=True
             ):
 
+                save_current_form()
+
                 if step_number == 2:
                     st.session_state.evidence_index = 0
                     st.session_state.edit_return_to = None
@@ -362,7 +350,8 @@ def show_sidebar():
                 elif step_number == 4:
                     st.session_state.measurement_index = 0
 
-                save_current_form()
+                if step_number != 2:
+                    st.session_state.edit_return_to = None
                 st.session_state.step = step_number
                 save_progress()
                 st.rerun()
@@ -483,6 +472,9 @@ if "case_file" not in st.session_state:
     st.divider()
 
     if st.button("Nowa sprawa"):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.session_state.case_id = uuid4().hex
         st.session_state.case_file = None
         st.session_state.step = 1
         st.rerun()
@@ -503,54 +495,24 @@ if st.session_state.step == 1:
 
     st.subheader("Dane sprawy")
 
-    case_number = st.text_input(
-        "Sygnatura sprawy",
-        value=st.session_state.get(
-            "case_number",
-            "4170-0.Ds.985.2025"
-        )
-    )
+    # Oddzielamy trwałe dane sprawy od tymczasowych kluczy widgetów.
+    # Streamlit usuwa klucze niewidocznych widgetów między ekranami.
+    defaults = {
+        "form_case_number": st.session_state.get("case_number", "4170-0.Ds.985.2025"),
+        "form_internal_number": st.session_state.get("internal_number", "0151/CHR/26"),
+        "form_for_whom": st.session_state.get("for_whom", "BES"),
+        "form_case_description": st.session_state.get("case_description", ""),
+        "form_questions": st.session_state.get("questions", ""),
+    }
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
-    internal_number = st.text_input(
-        "Numer wewnętrzny",
-        value=st.session_state.get(
-            "internal_number",
-            "0151/CHR/26"
-        )
-    )
-
-    # Zachowujemy również wybór BES/ZLO po powrocie
-    # do tego ekranu.
-    current_for_whom = st.session_state.get(
-        "for_whom",
-        "BES"
-    )
-
-    for_whom_options = ["BES", "ZLO"]
-
-    for_whom = st.selectbox(
-        "Odbiorca raportu",
-        for_whom_options,
-        index=for_whom_options.index(current_for_whom)
-    )
-
-    case_description = st.text_area(
-        "Opis sprawy",
-        value=st.session_state.get(
-            "case_description",
-            ""
-        ),
-        height=180
-    )
-
-    questions = st.text_area(
-        "Pytania",
-        value=st.session_state.get(
-            "questions",
-            ""
-        ),
-        height=220
-    )
+    case_number = st.text_input("Sygnatura sprawy", key="form_case_number")
+    internal_number = st.text_input("Numer wewnętrzny", key="form_internal_number")
+    for_whom = st.selectbox("Odbiorca raportu", ["BES", "ZLO"], key="form_for_whom")
+    case_description = st.text_area("Opis sprawy", key="form_case_description", height=180)
+    questions = st.text_area("Pytania", key="form_questions", height=220)
 
     st.divider()
 
@@ -621,6 +583,7 @@ if st.session_state.step == 1:
             st.session_state.evidence_index = 0
 
             st.session_state.step = 2
+            save_progress()
             st.rerun()
 
 
@@ -756,6 +719,8 @@ elif st.session_state.step == 2:
             key="step2_back"
         ):
 
+            save_current_form()
+
             # Jeżeli weszliśmy tutaj z podsumowania
             # przez "Edytuj", wracamy do podsumowania.
             if st.session_state.get(
@@ -773,6 +738,7 @@ elif st.session_state.step == 2:
             else:
                 st.session_state.step = 1
 
+            save_progress()
             st.rerun()
 
     with col_next:
@@ -787,7 +753,7 @@ elif st.session_state.step == 2:
             # mogą nie odpowiadać nowemu rodzajowi dowodu.
             if item["category"] != category:
                 item.pop("measurement", None)
-                clear_case_widgets()
+                clear_measurement_widgets(index)
 
             # Zapisujemy zaakceptowane dane dowodu.
             item["number"] = number
@@ -826,6 +792,7 @@ elif st.session_state.step == 2:
 
                 st.session_state.step = 3
 
+            save_progress()
             st.rerun()
 
 
@@ -890,6 +857,7 @@ elif st.session_state.step == 3:
                 st.session_state.evidence_index = index
                 st.session_state.step = 2
 
+                save_progress()
                 st.rerun()
 
     st.divider()
@@ -914,6 +882,7 @@ elif st.session_state.step == 3:
             )
 
             st.session_state.step = 2
+            save_progress()
             st.rerun()
 
     with col_next:
@@ -936,6 +905,7 @@ elif st.session_state.step == 3:
                 st.session_state.measurement_index = 0
 
                 st.session_state.step = 4
+                save_progress()
                 st.rerun()
 
             else:
@@ -1009,11 +979,13 @@ elif st.session_state.step == 4:
             ):
                 # Zapamiętujemy, że po edycji mamy wrócić
                 # do danych pomiarowych tego samego dowodu.
+                save_current_form()
                 st.session_state.edit_return_to = "measurements"
 
                 st.session_state.evidence_index = index
                 st.session_state.step = 2
 
+                save_progress()
                 st.rerun()
 
     st.divider()
@@ -1106,6 +1078,8 @@ elif st.session_state.step == 4:
             key="step4_back"
         ):
 
+            save_current_form()
+
             # Poprzedni dowód pomiarowy.
             if index > 0:
                 st.session_state.measurement_index -= 1
@@ -1114,6 +1088,7 @@ elif st.session_state.step == 4:
             else:
                 st.session_state.step = 3
 
+            save_progress()
             st.rerun()
 
     with col_next:
@@ -1162,10 +1137,12 @@ elif st.session_state.step == 4:
             if index < len(evidence) - 1:
 
                 st.session_state.measurement_index += 1
+                save_progress()
                 st.rerun()
 
             else:
 
+                save_progress()
                 st.success(
                     "Wszystkie dane pomiarowe zostały zatwierdzone."
                 )
