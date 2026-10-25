@@ -125,3 +125,39 @@ def combine(documents, fid):
     )
     return {"cases": output_cases, "fidCasesWithoutDocument": unmatched}
 
+
+
+def main():
+    preview = combine(read_json(DOCUMENTS_FILE), read_json(FID_FILE))
+
+    with OUTPUT_FILE.open("w", encoding="utf-8") as stream:
+        json.dump(preview, stream, ensure_ascii=False, indent=2)
+
+    for case in preview["cases"]:
+        report = case["fid"]
+        status = (
+            "OK"
+            if report["countMatches"] and report["identifiersMatch"]
+            else "UWAGA"
+        )
+
+        print(
+            f"{case['caseNumber']} | "
+            f"chromatogramy: {report['chromatogramCount']} | "
+            f"stężenia: {report['concentrationCount']} | {status}"
+        )
+
+        for warning in case["warnings"]:
+            print("  ! " + warning)
+
+    if preview["fidCasesWithoutDocument"]:
+        print(
+            "FID bez dokumentu OCR:",
+            ", ".join(preview["fidCasesWithoutDocument"])
+        )
+
+    print(f"\nSprawy: {len(preview['cases'])}. Zapisano: {OUTPUT_FILE}")
+
+
+if __name__ == "__main__":
+    main()
