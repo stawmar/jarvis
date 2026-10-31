@@ -207,7 +207,9 @@ def unique_persons(items):
 
 def scan_file(stem, docx_path, pdf_path):
     docx_text = read_docx(docx_path) if docx_path else ""
-    pdf_pages = read_pdf_pages(pdf_path) if pdf_path else []
+    # PDF odczytujemy tylko wtedy, gdy nie ma wersji DOCX.
+    # Dzięki temu nie wymagamy narzędzi PDF dla dokumentów z OCR.
+    pdf_pages = read_pdf_pages(pdf_path) if pdf_path and not docx_path else []
     if pdf_pages:
         cover = pdf_pages[0]
         post = "\n".join(pdf_pages[1:])
