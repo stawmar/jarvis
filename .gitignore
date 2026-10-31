@@ -10,3 +10,4 @@ cases/
 logs/
 learning/
 *.log
+*.json
