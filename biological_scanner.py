@@ -359,6 +359,22 @@ def main():
     print(f"Zapisano: {DEST}")
     print("To tylko robocze propozycje — niczego nie wprowadzono do kreatora.")
 
+    # Wczytujemy wynik skanowania zapisany do JSON.
+    with open("cases/biological_scan.json", encoding="utf-8") as f:
+        scan_result = json.load(f)
+
+    print("\n=== ROZPOZNANE NUMERY PRÓBEK ===")
+
+    # Wyświetlamy próbki dla każdej rozpoznanej sprawy.
+    for index, case in enumerate(scan_result["cases"], start=1):
+        # Pobieramy numery próbek, zachowując ich oryginalny format.
+        samples = case.get("sampleIdentifiers", [])
+
+        # Jeśli brak numerów, oznaczamy sprawę do weryfikacji.
+        sample_text = ", ".join(samples) if samples else "BRAK - DO WERYFIKACJI"
+
+        print(f"Sprawa {index:02d}: {sample_text}")
+
 
 if __name__ == "__main__":
     main()
