@@ -490,8 +490,40 @@ if "case_file" not in st.session_state:
 
             # Liczba problemów do późniejszego pokazania
             # przy odpowiednich polach formularza.
+            # Pobieramy problemy wykryte przez importer.
             issues = selected_case.get("fieldIssues", [])
+
             st.write(f"**Pola wymagające weryfikacji:** {len(issues)}")
+
+            # W przypadku materiałów biologicznych pokazujemy numery próbek.
+            if kind == "Biologiczna":
+
+                # Numery próbek zachowujemy w oryginalnym formacie.
+                samples = selected_case.get("sampleIdentifiers") or []
+
+                st.text_input(
+                    "Numery próbek",
+                    value=", ".join(samples),
+                    disabled=True,  # Na tym etapie tylko podgląd.
+                    key=f"preview_samples_{selected}"
+                )
+
+                # Komunikaty dotyczące numerów próbek.
+                for issue in issues:
+                    if issue.get("field") == "sampleIdentifiers":
+                        st.error(f"{issue['status']}: {issue['message']}")
+
+                # Komunikaty dotyczące procedury narkotykowej.
+                procedure_issues = [
+                    issue for issue in issues
+                    if issue.get("field") == "procedureVariant"
+                ]
+
+                if procedure_issues:
+                    st.write("**Wariant procedury narkotykowej**")
+
+                    for issue in procedure_issues:
+                        st.error(f"{issue['status']}: {issue['message']}")
 
         st.divider()
 
