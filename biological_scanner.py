@@ -82,10 +82,27 @@ def unique(items):
 
 
 def norm_sample(s):
-    s = re.sub(r"\s+", "", s.upper()).replace("–", "-").replace("—", "-")
-    if "/" in s and "[" in s:
-        return s
-    s = re.sub(r"^([A-Z]{2})[._-]?(\d{2})[._-]+(\d{4,6})[._-]*$", r"\1\2-\3", s)
+    # Usuwamy nadmiarowe odstępy, ale nie sklejamy numeru próbki.
+    s = re.sub(r"\s+", " ", s.strip().upper())
+
+    # Normalizujemy próbki w formacie daty, np. 26/10/2026 [JUC].
+    match = re.fullmatch(
+        r"(\d{2})[/-](\d{2})[/-](\d{4})\s*\[\s*([A-Z]{2,8})\s*\]",
+        s
+    )
+
+    if match:
+        day, month, year, code = match.groups()
+        return f"{day}/{month}/{year} [{code}]"
+
+    # Numery laboratoryjne, np. WR25-003734.
+    s = re.sub(r"\s*[-–—]\s*", "-", s)
+    s = re.sub(
+        r"^([A-Z]{2})[._-]?(\d{2})[._-]+(\d{4,6})$",
+        r"\1\2-\3",
+        s
+    )
+
     return s
 
 
@@ -262,8 +279,6 @@ def scan_file(stem, docx_path, pdf_path):
         warnings.append("Postanowienie zawiera dodatkowe/inne numery próbek: " + ", ".join(only_post))
     if not form_ids:
         warnings.append("Nie odczytano numeru próbki z formularza/pisma przewodniego")
-    if source == "ZLO" and not number:
-        warnings.append("Brak typowej sygnatury Ds — użyj identyfikatora postanowienia i numeru próbki")
     if scope["narcotics"] and scope["narcoticsPanel"] == "nieustalony":
         warnings.append("Nie ustalono wariantu procedury narkotykowej")
     if not scope["alcohol"] and not scope["narcotics"]:
