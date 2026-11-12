@@ -151,6 +151,12 @@ def load_case_data(case_file):
 
     st.session_state.evidence = case_data.get("evidence", [])
 
+    # Próbki biologiczne — niezależne od dowodów rzeczowych.
+    st.session_state.biological_samples = case_data.get("biologicalSamples", [])
+
+    # Problemy wykryte przez skanery, przypisane do pól formularza.
+    st.session_state.field_issues = case_data.get("fieldIssues", [])
+
     # Po wczytaniu zaczynamy od przeglądu dowodów.
     progress = case_data.get("progress", {})
 
@@ -186,6 +192,10 @@ def save_case_data():
     case_data["case"] = st.session_state.get("case_description", "")
     case_data["questions"] = st.session_state.get("questions", "")
     case_data["evidence"] = st.session_state.evidence
+
+    # Zachowujemy próbki i ostrzeżenia przy każdym zapisie sprawy.
+    case_data["biologicalSamples"] = st.session_state.get("biological_samples", [])
+    case_data["fieldIssues"] = st.session_state.get("field_issues", [])
 
     with open(case_file, "w", encoding="utf-8") as f:
         json.dump(
