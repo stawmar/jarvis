@@ -110,6 +110,9 @@ def combine(documents, fid):
             "source": extracted.get("source"),
             "sourceDocument": doc.get("filename"),
             "evidenceFromOcr": evidence,
+            # Lista próbek biologicznych — na razie pusta.
+            # Ta sama sprawa może zawierać również materiał biologiczny.
+            "biologicalSamples": [],
             "fid": {
                 "chromatogramCount": len(charts),
                 "concentrationCount": len(values),
@@ -140,6 +143,20 @@ def prepare_biological_cases(data):
         # Pobieramy numery próbek z dokumentów.
         samples = case.get("sampleIdentifiers") or []
         post_samples = case.get("postSampleIdentifiers") or []
+
+        # Przygotowujemy wspólną strukturę dla spraw biologicznych i mieszanych.
+        # Nie przypisujemy automatycznie dowodów rzeczowych.
+        item["evidenceFromOcr"] = []
+
+        # Każdą próbkę zapisujemy osobno, zachowując oryginalny numer.
+        # Wszystkie próbki wymagają zatwierdzenia w kreatorze.
+        item["biologicalSamples"] = [
+            {
+                "number": sample,
+                "approved": False
+            }
+            for sample in samples
+        ]
 
         # Lista problemów przypisanych do pól formularza.
         issues = []

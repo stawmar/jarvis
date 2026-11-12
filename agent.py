@@ -446,6 +446,16 @@ if "case_file" not in st.session_state:
                 with open(case_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
 
+                # Pomijamy techniczne pliki JSON skanerów.
+                # Prawdziwa zapisana sprawa musi posiadać identyfikator caseId.
+                if not isinstance(data, dict) or not data.get("caseId"):
+                    continue
+
+                # Aktualny kreator wymaga listy dowodów rzeczowych.
+                # Przyszłe sprawy biologiczne obsłużymy osobną ścieżką.
+                if not isinstance(data.get("evidence"), list):
+                    continue
+
                 case_number = data.get("caseNumber", "Bez sygnatury")
                 internal_number = data.get("internalNumber", "")
 
