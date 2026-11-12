@@ -166,6 +166,26 @@ def prepare_biological_cases(data):
                 )
             })
 
+        # Analizujemy ostrzeżenia wygenerowane przez skaner biologiczny.
+        for warning in case.get("warnings", []):
+
+            # Nie udało się ustalić wariantu badania narkotykowego.
+            if "Nie ustalono wariantu procedury narkotykowej" in warning:
+                issues.append({
+                    "field": "procedureVariant",
+                    "status": "MISSING",
+                    "message": warning
+                })
+
+            # Procedura została rozpoznana tylko na podstawie nazwy pliku.
+            # Nie traktujemy jej jako potwierdzonej.
+            elif "Wariant narko wywnioskowany tylko z nazwy pliku" in warning:
+                issues.append({
+                    "field": "procedureVariant",
+                    "status": "REVIEW",
+                    "message": warning
+                })
+
         # Informacje dla przyszłego formularza GUI.
         item["fieldIssues"] = issues
 
