@@ -17,6 +17,7 @@ from pathlib import Path
 
 DOCUMENTS_FILE = Path("document_scan.json")
 FID_FILE = Path("cases/fid_scan.json")
+BIOLOGICAL_FILE = Path("cases/biological_scan.json")
 OUTPUT_FILE = Path("case_import_preview.json")
 
 
@@ -125,10 +126,69 @@ def combine(documents, fid):
     )
     return {"cases": output_cases, "fidCasesWithoutDocument": unmatched}
 
+def prepare_biological_cases(data):
+    # Sprawdzamy strukturę danych otrzymanych ze skanera.
+    if not isinstance(data, dict) or not isinstance(data.get("cases"), list):
+        raise ValueError("Nieprawidłowa struktura biological_scan.json")
 
+    result = []
+
+    for case in data["cases"]:
+        # Zachowujemy wszystkie dane rozpoznane przez skaner.
+        item = case.copy()
+
+        # Pobieramy numery próbek z dokumentów.
+        samples = case.get("sampleIdentifiers") or []
+        post_samples = case.get("postSampleIdentifiers") or []
+
+        # Lista problemów przypisanych do pól formularza.
+        issues = []
+
+        # Brak rozpoznanego numeru próbki.
+        if not samples:
+            issues.append({
+                "field": "sampleIdentifiers",
+                "status": "MISSING",
+                "message": "Nie odczytano numeru próbki. Sprawdź okładkę."
+            })
+
+        # Numery występujące w postanowieniu, ale nieprzypisane
+        # do rozpoznanych próbek.
+        extra = sorted(set(post_samples) - set(samples))
+
+        if samples and extra:
+            issues.append({
+                "field": "sampleIdentifiers",
+                "status": "CONFLICT",
+                "message": (
+                    "Postanowienie zawiera dodatkowe lub inne numery: "
+                    + ", ".join(extra)
+                )
+            })
+
+        # Informacje dla przyszłego formularza GUI.
+        item["fieldIssues"] = issues
+
+        # Każda sprawa wymaga zatwierdzenia przez użytkownika.
+        item["approved"] = False
+
+        result.append(item)
+
+    return result
 
 def main():
     preview = combine(read_json(DOCUMENTS_FILE), read_json(FID_FILE))
+
+    # Dołączamy sprawy biologiczne do podglądu importu.
+    # Nie przekazujemy ich do FID — to osobna ścieżka.
+    preview["biologicalCases"] = prepare_biological_cases(
+        read_json(BIOLOGICAL_FILE)
+    )
+
+    # Wyświetlamy wykryte problemy z polami biologicznymi.
+    for case in preview["biologicalCases"]:
+        for issue in case["fieldIssues"]:
+            print(f"  [{issue['status']}] {issue['message']}")
 
     with OUTPUT_FILE.open("w", encoding="utf-8") as stream:
         json.dump(preview, stream, ensure_ascii=False, indent=2)
