@@ -429,6 +429,72 @@ if "case_file" not in st.session_state:
 
     st.title("JARVIS — Kreator raportów")
 
+    # ---------------------------------------------------------
+    # Propozycje spraw przygotowane przez skanery JARVIS
+    # ---------------------------------------------------------
+
+    preview_file = BASE_DIR / "case_import_preview.json"
+
+    if preview_file.is_file():
+
+        # Wczytujemy wynik importera.
+        with preview_file.open("r", encoding="utf-8") as f:
+            preview = json.load(f)
+
+        # Łączymy obie kolekcje tylko na potrzeby listy wyboru.
+        # Nie scalamy danych poszczególnych spraw.
+        candidates = (
+                [("Rzeczowa", case) for case in preview.get("cases", [])]
+                +
+                [("Biologiczna", case) for case in preview.get("biologicalCases", [])]
+        )
+
+        if candidates:
+            st.subheader("Sprawy rozpoznane przez JARVIS")
+
+
+            # Tworzymy etykiety wyświetlane na liście.
+            def candidate_label(index):
+                kind, case = candidates[index]
+
+                # Sygnatura może być nieobecna, szczególnie dla ZLO.
+                number = case.get("caseNumber") or "Bez sygnatury"
+
+                # Numery próbek są istotne dla spraw biologicznych.
+                samples = case.get("sampleIdentifiers", [])
+                sample_text = ", ".join(samples) if samples else "—"
+
+                return f"{index + 1}. {kind} | {number} | próbki: {sample_text}"
+
+
+            # Wybieramy propozycję, ale jeszcze jej nie importujemy.
+            selected = st.selectbox(
+                "Wybierz sprawę do podglądu",
+                options=range(len(candidates)),
+                format_func=candidate_label,
+                key="import_candidate"
+            )
+
+            kind, selected_case = candidates[selected]
+
+            # Pokazujemy podstawowe informacje do weryfikacji.
+            st.write(f"**Rodzaj:** {kind}")
+            st.write(
+                f"**Dowody rzeczowe:** "
+                f"{len(selected_case.get('evidenceFromOcr', []))}"
+            )
+            st.write(
+                f"**Próbki biologiczne:** "
+                f"{len(selected_case.get('biologicalSamples', []))}"
+            )
+
+            # Liczba problemów do późniejszego pokazania
+            # przy odpowiednich polach formularza.
+            issues = selected_case.get("fieldIssues", [])
+            st.write(f"**Pola wymagające weryfikacji:** {len(issues)}")
+
+        st.divider()
+
     st.subheader("Rozpocznij pracę")
 
     saved_cases = sorted(
