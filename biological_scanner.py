@@ -29,8 +29,10 @@ DATE_SAMPLE_RE = re.compile(
     r"(?<!\d)\d{2}[/-]\d{2}[/-]\d{4}\s*\[\s*[A-Z]{2,8}\s*\]",
     re.IGNORECASE,
 )
+# Rozpoznaje sygnatury Ds, również z opcjonalną końcówką .S.
 DS_RE = re.compile(
-    r"(?<!\d)(\d{4})\s*-\s*([\dOo])\s*\.?\s*[Dd][Ss]\s*\.?\s*([\dlI]{2,6})\s*[.,]\s*(20\d{2})\b"
+    r"(?<!\d)(\d{4})\s*-\s*([\dOo])\s*\.?\s*[Dd][Ss]\s*\.?\s*"
+    r"([\dlI]{2,6})\s*[.,]\s*(20\d{2})\b(?:\s*\.\s*([Ss]))?"
 )
 BES_OTHER_RE = re.compile(r"\bWR\s*\.\s*\d+\s*\.\s*RSD\s*\.\s*\d+\s*\.\s*20\d{2}\b", re.I)
 MATERIAL_PATTERNS = [
@@ -118,7 +120,11 @@ def case_ids(text):
     for m in DS_RE.finditer(text):
         prefix = "0" if m.group(2).upper() == "O" else m.group(2)
         seq = m.group(3).replace("l", "1").replace("I", "1")
-        found.append(f"{m.group(1)}-{prefix}.Ds.{seq}.{m.group(4)}")
+        # Grupa 5 zawiera opcjonalne S na końcu sygnatury.
+        suffix = ".S" if m.group(5) else ""
+
+        # Zachowujemy pełny numer sprawy.
+        found.append(f"{m.group(1)}-{prefix}.Ds.{seq}.{m.group(4)}{suffix}")
     found.extend(re.sub(r"\s+", "", m.group()) for m in BES_OTHER_RE.finditer(text))
     return unique(found)
 
