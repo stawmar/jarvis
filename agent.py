@@ -456,6 +456,34 @@ if "evidence_index" not in st.session_state:
 if "measurement_index" not in st.session_state:
     st.session_state.measurement_index = 0
 
+def import_key(case):
+    """Tworzy identyfikator dokumentu źródłowego dla importowanej sprawy."""
+
+    if not isinstance(case, dict):
+        return None
+
+    # Pobieramy nazwę dokumentu z odpowiedniego skanera.
+    name = case.get("sourceDocument") or case.get("document")
+
+    # Alternatywne źródło dla spraw biologicznych.
+    if not name:
+        files = case.get("sourceFiles") or {}
+        name = files.get("docx") or files.get("pdf")
+
+    if not isinstance(name, str) or not name.strip():
+        return None
+
+    # Usuwamy ścieżkę i rozszerzenie pliku, ale zachowujemy
+    # oryginalną nazwę dokumentu jako podstawę identyfikacji.
+    name = Path(name).name.strip()
+
+    if name.lower().endswith((".docx", ".pdf")):
+        name = name.rsplit(".", 1)[0]
+
+    # Rozróżniamy dokumenty biologiczne i rzeczowe.
+    kind = "bio" if "sampleIdentifiers" in case else "rzecz"
+
+    return f"{kind}:{name.casefold()}"
 
 # ---------------------------------------------------------
 # Wybór zapisanej sprawy
@@ -477,13 +505,38 @@ if "case_file" not in st.session_state:
         with preview_file.open("r", encoding="utf-8") as f:
             preview = json.load(f)
 
-        # Łączymy obie kolekcje tylko na potrzeby listy wyboru.
-        # Nie scalamy danych poszczególnych spraw.
-        candidates = (
-                [("Rzeczowa", case) for case in preview.get("cases", [])]
-                +
-                [("Biologiczna", case) for case in preview.get("biologicalCases", [])]
-        )
+        # Zbieramy identyfikatory dokumentów, dla których
+        # zostały już utworzone sprawy w kreatorze.
+        started_keys = set()
+
+        for case_path in CASES_DIR.glob("*.json"):
+            try:
+                with case_path.open("r", encoding="utf-8") as f:
+                    saved = json.load(f)
+            except (OSError, json.JSONDecodeError):
+                continue
+
+            # Interesują nas tylko rzeczywiste sprawy utworzone
+            # przez kreator na podstawie importera.
+            if not isinstance(saved, dict) or not saved.get("caseId"):
+                continue
+
+            source = saved.get("importSource")
+            key = import_key(source)
+
+            if key:
+                started_keys.add(key)
+
+        # Przygotowujemy listę propozycji bez rozpoczętych spraw.
+        candidates = [
+            (kind, case)
+            for kind, group in (
+                ("Rzeczowa", preview.get("cases", [])),
+                ("Biologiczna", preview.get("biologicalCases", []))
+            )
+            for case in group
+            if import_key(case) not in started_keys
+        ]
 
         if candidates:
             st.subheader("Sprawy rozpoznane przez JARVIS")
