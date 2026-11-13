@@ -281,7 +281,7 @@ def show_sidebar():
     # Dostępność ekranów
     available = {
         1: True,
-        2: has_case,
+        2: has_case and bool(evidence),
         3: all_evidence_approved,
         4: all_evidence_approved,
         5: False,
@@ -535,6 +535,72 @@ if "case_file" not in st.session_state:
                     for issue in procedure_issues:
                         st.error(f"{issue['status']}: {issue['message']}")
 
+        # Utworzenie sprawy na podstawie propozycji importera.
+        if st.button("Rozpocznij sprawę", type="primary", key="start_imported_case"):
+
+            # Odbiorca raportu musi być jednoznacznie ustalony.
+            receiver = selected_case.get("source")
+
+            if receiver not in ("BES", "ZLO"):
+                st.error("Nie rozpoznano odbiorcy BES/ZLO. Sprawdź dane importu.")
+
+            else:
+                # Każdy import tworzy osobną sprawę roboczą.
+                case_id = uuid4().hex
+                case_file = CASES_DIR / f"{case_id}.json"
+
+                # Przekształcamy dowody rzeczowe na format kreatora.
+                # Nie przypisujemy kategorii, jeśli nie została rozpoznana.
+                evidence = [
+                    {
+                        "number": row.get("number") or "",
+                        "category": row.get("category") or "",
+                        "description": row.get("description") or "",
+                        "approved": False
+                    }
+                    for row in selected_case.get("evidenceFromOcr", [])
+                ]
+
+                # Przygotowujemy dane nowej sprawy.
+                case_data = {
+                    "caseId": case_id,
+                    "status": "IN_REVIEW",
+                    "caseNumber": selected_case.get("caseNumber") or "",
+                    "internalNumber": selected_case.get("internalNumber") or "",
+                    "forWhom": receiver,
+                    "case": "",
+                    "questions": "",
+                    "evidence": evidence,
+
+                    # Zachowujemy wszystkie rozpoznane próbki biologiczne.
+                    "biologicalSamples": selected_case.get("biologicalSamples", []),
+
+                    # Zachowujemy problemy przypisane do pól.
+                    "fieldIssues": selected_case.get("fieldIssues", []),
+
+                    # Oryginalna propozycja pozostaje dostępna do weryfikacji.
+                    "importSource": selected_case,
+
+                    # Nową sprawę rozpoczynamy od danych podstawowych.
+                    "progress": {
+                        "step": 1,
+                        "evidenceIndex": 0,
+                        "measurementIndex": 0
+                    }
+                }
+
+                # Zapisujemy nową sprawę, nie modyfikując wyniku importera.
+                with case_file.open("w", encoding="utf-8") as f:
+                    json.dump(case_data, f, ensure_ascii=False, indent=2)
+
+                # Wczytujemy nową sprawę do aktualnej sesji Streamlit.
+                load_case_data(case_file)
+
+                # Otwieramy pierwszy ekran kreatora.
+                st.session_state.step = 1
+                save_progress()
+                st.rerun()
+
         st.divider()
 
     st.subheader("Rozpocznij pracę")
@@ -700,9 +766,17 @@ if st.session_state.step == 1:
             # Pierwszy dowód.
             st.session_state.evidence_index = 0
 
-            st.session_state.step = 2
-            save_progress()
-            st.rerun()
+            # Do istniejącego formularza dowodów przechodzimy
+            # wyłącznie wtedy, gdy sprawa ma dowody rzeczowe.
+            if st.session_state.evidence:
+                st.session_state.step = 2
+                save_progress()
+                st.rerun()
+            else:
+                # Sprawa biologiczna pozostaje na ekranie danych sprawy,
+                # dopóki nie dodamy formularza próbek biologicznych.
+                save_progress()
+                st.warning("Dane sprawy zapisano. Formularz próbek biologicznych przygotujemy w następnym kroku.")
 
 
 # =========================================================
