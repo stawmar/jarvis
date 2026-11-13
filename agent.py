@@ -23,6 +23,32 @@ CASES_DIR.mkdir(exist_ok=True)
 # Funkcje pomocnicze
 # ---------------------------------------------------------
 
+def update_biological_sample(index, widget_key):
+    """Zapisuje numer próbki po zmianie pola w Streamlit."""
+
+    # Pobieramy wartość wpisaną przez użytkownika.
+    number = st.session_state[widget_key].strip()
+
+    # Pobieramy próbki aktualnej sprawy.
+    samples = st.session_state.setdefault("biological_samples", [])
+
+    if index < len(samples):
+        # Aktualizujemy istniejącą próbkę.
+        if samples[index].get("number") != number:
+            samples[index]["number"] = number
+            samples[index]["approved"] = False
+
+    elif index == len(samples) and number:
+        # Dodajemy pierwszą próbkę, jeżeli OCR jej nie rozpoznał.
+        samples.append({
+            "number": number,
+            "approved": False
+        })
+
+    # Zapisujemy sprawę do JSON.
+    # Ostrzeżenia fieldIssues pozostają do osobnej weryfikacji.
+    save_case_data()
+
 def save_current_form():
     """Zapisuje wartości widocznego formularza bez zmiany statusu zatwierdzenia."""
     if not st.session_state.get("case_file"):
@@ -697,6 +723,51 @@ if st.session_state.step == 1:
     for_whom = st.selectbox("Odbiorca raportu", ["BES", "ZLO"], key="form_for_whom")
     case_description = st.text_area("Opis sprawy", key="form_case_description", height=180)
     questions = st.text_area("Pytania", key="form_questions", height=220)
+
+    # ---------------------------------------------------------
+    # Próbki biologiczne
+    # ---------------------------------------------------------
+
+    samples = st.session_state.get("biological_samples", [])
+    issues = st.session_state.get("field_issues", [])
+
+    sample_issues = [
+        issue for issue in issues
+        if issue.get("field") == "sampleIdentifiers"
+    ]
+
+    # Pokazujemy sekcję tylko dla spraw z próbkami biologicznymi
+    # albo z nierozpoznanym numerem próbki.
+    if samples or sample_issues:
+
+        st.subheader("Próbki biologiczne")
+
+        # Przy braku rozpoznanych próbek pokazujemy jedno puste pole.
+        for index in range(max(len(samples), 1)):
+
+            number = samples[index].get("number", "") if index < len(samples) else ""
+
+            # Unikalny klucz przypisany do sprawy i próbki.
+            widget_key = f"biological_sample_{st.session_state.case_id}_{index}"
+
+            # Wartość początkowa z danych importera.
+            if widget_key not in st.session_state:
+                st.session_state[widget_key] = number
+
+            # Edytowalne pole numeru próbki.
+            st.text_input(
+                f"Numer próbki {index + 1}",
+                key=widget_key,
+                on_change=update_biological_sample,
+                args=(index, widget_key)
+            )
+
+        # Problemy wyświetlamy bezpośrednio pod polami próbek.
+        for issue in sample_issues:
+            st.error(
+                f"{issue.get('status', 'REVIEW')}: "
+                f"{issue.get('message', 'Wymagana weryfikacja')}"
+            )
 
     st.divider()
 
