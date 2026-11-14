@@ -184,7 +184,8 @@ def analysis_of(cover, docx_text, filename, source):
         # Szukamy pytania o środki odurzające w próbkach krwi.
         # Nie wystarcza sama wzmianka o ustawie narkotykowej.
         narc_from_order = bool(re.search(
-            r"czy\s+w\s+zabezpieczon\w*\s+probk\w*\s+krwi"
+            # Obsługuje zarówno "próbce krwi", jak i "próbkach krwi".
+            r"czy\s+w\s+zabezpieczon\w*\s+prob(?:ce|k\w*)\s+krwi"
             r".{0,350}?"
             r"srod\w*\s+odurzaj\w*",
             order_text,
@@ -232,6 +233,21 @@ def analysis_of(cover, docx_text, filename, source):
             else:
                 panel = "nieustalony"
                 panel_source = "brak jednoznacznego oznaczenia"
+
+    # Jeżeli formularz nie określił badania alkoholu,
+    # sprawdzamy pytanie o jego obecność w próbce krwi.
+    if not alc:
+        order_text = asciify(docx_text)
+
+        alc_from_order = bool(re.search(
+            r"czy\s+w\s+zabezpieczon\w*\s+prob(?:ce|k\w*)\s+krwi"
+            r".{0,300}?\bznajduje\s+sie\s+alkohol\b",
+            order_text,
+            re.I | re.S
+        ))
+
+        # Uzupełniamy zakres badania, a nie wynik stężenia.
+        alc = alc_from_order
 
     return {"alcohol": alc, "narcotics": narc,
             "narcoticsPanel": panel, "panelSource": panel_source}
