@@ -784,6 +784,83 @@ if st.session_state.step == 1:
     samples = st.session_state.get("biological_samples", [])
     issues = st.session_state.get("field_issues", [])
 
+    # ---------------------------------------------------------
+    # Weryfikacja rodzaju materiału biologicznego
+    # ---------------------------------------------------------
+
+    # Pobieramy problemy dotyczące rodzaju materiału.
+    material_issues = [
+        issue for issue in issues
+        if issue.get("field") == "material"
+    ]
+
+    if material_issues:
+        st.subheader("Rodzaj materiału biologicznego")
+
+        # Szukamy problemu, który nie został jeszcze zatwierdzony.
+        unresolved = [
+            issue for issue in material_issues
+            if issue.get("status") != "RESOLVED"
+        ]
+
+        if unresolved:
+            for issue in unresolved:
+                st.error(issue.get("message", "Nie rozpoznano materiału"))
+
+            # Użytkownik musi świadomie wybrać rodzaj materiału.
+            selected_material = st.selectbox(
+                "Wybierz materiał",
+                [
+                    "— wybierz —",
+                    "krew",
+                    "mocz",
+                    "osocze",
+                    "surowica",
+                    "ciałko szkliste",
+                    "tkanka",
+                    "mięsień"
+                ],
+                key=f"material_select_{st.session_state.case_id}"
+            )
+
+            if st.button(
+                    "Zatwierdź materiał",
+                    disabled=selected_material == "— wybierz —",
+                    key="approve_material"
+            ):
+                case_file = st.session_state.get("case_file")
+
+                if not case_file:
+                    st.error("Najpierw zapisz sprawę.")
+                else:
+                    # Wczytujemy aktualny JSON sprawy.
+                    with open(case_file, "r", encoding="utf-8") as f:
+                        case_data = json.load(f)
+
+                    # Zachowujemy strukturę listy stosowaną przez skaner.
+                    case_data["material"] = [selected_material]
+
+                    # Zatwierdzamy pole, ale nie usuwamy historii problemu.
+                    for issue in unresolved:
+                        issue["status"] = "RESOLVED"
+                        issue["resolvedValue"] = selected_material
+                        issue["resolutionSource"] = "manual"
+
+                    # Aktualizujemy stan ostrzeżeń.
+                    case_data["fieldIssues"] = issues
+                    st.session_state.field_issues = issues
+
+                    # Zapisujemy zatwierdzenie bez utraty pozostałych pól.
+                    with open(case_file, "w", encoding="utf-8") as f:
+                        json.dump(case_data, f, ensure_ascii=False, indent=2)
+
+                    st.rerun()
+
+        else:
+            # Wyświetlamy wcześniej potwierdzoną wartość.
+            confirmed = material_issues[0].get("resolvedValue", "")
+            st.success(f"Materiał zatwierdzony: {confirmed}")
+
     sample_issues = [
         issue for issue in issues
         if issue.get("field") == "sampleIdentifiers"
