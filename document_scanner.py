@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""JARVIS — bezpieczny skaner dowodów rzeczowych z dokumentów DOCX po OCR.
+"""JARVIS v4 — konserwatywny skaner dowodów rzeczowych z DOCX po OCR.
 
 Kontrakt z case_importer.py pozostaje bez zmian:
     [{"filename", "status", "data": {"source", "caseNumber", "internalNumber",
@@ -40,7 +40,7 @@ EXPLICIT = re.compile(
 # Granice pozycji ograniczają dopasowanie do faktycznej listy, a nie wag.
 ENUMERATED = re.compile(
     rf'(?:(?<=^)|(?<=[\n;])|(?<=\s[-•*«])|(?<=\s[e]))'
-    rf'\s*(?P<number>{NUMBER})\s*[).,:;–—-]\s*', re.I | re.M
+    rf'\s*(?P<number>{NUMBER})\s*[).,:;–—-]\s*(?!\d)', re.I | re.M
 )
 
 # Rzeczownik/typ materiału daje pewność, że to opis fizycznego przedmiotu.
@@ -69,7 +69,9 @@ SECTION_END = re.compile(
     r'postanowienie\s+o\s+dopuszczeniu|'
     r'postanowienie\s+w\s+przedmiocie|'
     r'odpis\s+postanowienia|'
-    r'(?<!kserokopii\s)POSTANOWIENIE\b)', re.I
+    r'(?<!kserokopii\s)POSTANOWIENIE\b|'
+    r'biuro\s+ekspertyz\s+sadowych\s+sp\.?\s*z\s*o\.?\s*o\.?|'
+    r'regon\s*[:\-]|krs\s*[:\-])', re.I
 )
 
 PACKAGE = re.compile(
@@ -139,7 +141,7 @@ def extract_section(text, source):
     """Wyodrębnia sam wykaz dowodów, również z JEDNEGO akapitu OCR.
 
     W dokumentach ZLO formalne pola 1–10 nie są wykazem dowodów.
-    ZLO z materiałem rzeczowym, bez jawnych numerów, trafia do weryfikacji.
+    ZLO analizujemy tylko w polu materiału, bez pól cen i terminów.
     """
     normalized = norm(text)
     # W BES podstawą jest lista w piśmie przewodnim, nie pytania biegłego.
@@ -199,15 +201,34 @@ def extract_evidence(text, source=None, filename=''):
             candidates.append(entry)
 
     section = extract_section(text, source)
+
+    # ZLO: wyłącznie pole nr 3 formularza, przed polem nr 4.
+    # Numerów ceny, podatku i terminów nie traktujemy jak dowodów.
+    if section is None and source == 'ZLO':
+        normalized = norm(text)
+        heading = re.search(
+            r'material\s+do\s+badan|material\s+for\s+examination',
+            normalized
+        )
+        if heading:
+            tail = normalized[heading.start():heading.start() + 1800]
+            next_field = re.search(
+                r'\b4\s*[.]\s*cena\s+netto|'
+                r'\bnet\s+price|'
+                r'\boswiadczenie\s+zleceniobiorcy',
+                tail
+            )
+            if next_field:
+                tail = tail[:next_field.start()]
+            # Rzeczowy charakter materiału wynika z treści, nie z nazwy.
+            if re.search(
+                r'\b(?:susz\w*|prosz\w*|hasz\w*|amfetamin\w*|'
+                r'konopi\w*|substancj\w*|tabletk\w*|narkotyk\w*)\b',
+                tail
+            ):
+                section = tail
+
     if not section:
-        # Materiał rzeczowy ZLO w formularzu nie ma automatycznie numeru.
-        if source == 'ZLO' and PHYSICAL_NAME.search(norm(filename)):
-            material = re.search(r'(?:material\s+do\s+badan|material\s+for\s+examination)'
-                                 r'.{0,170}', norm(text), re.I | re.S)
-            if material:
-                candidate(material.group(0), 'Materiał rzeczowy ZLO — numer dowodu do ustalenia')
-        if candidates:
-            warnings.append('Niejednoznaczne fragmenty OCR — sprawdź reviewCandidates')
         if source == 'BES' and PHYSICAL_NAME.search(norm(filename)):
             warnings.append('Nazwa sugeruje dowody rzeczowe; brak pewnego wykazu w piśmie')
         return [], warnings, candidates
@@ -218,7 +239,11 @@ def extract_evidence(text, source=None, filename=''):
     # zachowujemy go do ręcznej oceny. Nie nadajemy mu numeru na siłę.
     if markers:
         unnumbered_prefix = section[:markers[0][0]]
-        if physical_description(unnumbered_prefix):
+        # ZLO: sam opis pola «SUSZ» przed etykietą «ślad nr 1»
+        # nie oznacza odrębnego dowodu i nie wymaga ostrzeżenia.
+        if physical_description(unnumbered_prefix) and not (
+            source == 'ZLO' and 'material do badan' in norm(unnumbered_prefix)
+        ):
             candidate(
                 unnumbered_prefix[-350:],
                 'Opis materiału przed pierwszym rozpoznanym numerem'
