@@ -168,7 +168,20 @@ def analysis_of(cover, docx_text, filename, source):
     alternate = form_scope(cover)
     combined = scope + " " + alternate
     alc = bool(re.search(r"alkohol|etanol", combined))
-    narc = bool(re.search(r"odurza|odurzaj|narkot|psychotrop", combined))
+    # Rozpoznajemy badanie narkotykowe również po nazwach substancji.
+    narc = bool(re.search(
+        r"odurza|odurzaj|narkot|psychotrop|\bthc\b|\bamfetamin\w*",
+        combined
+    ))
+
+    # Charakterystyczne sformułowanie ukierunkowanego badania ZLO.
+    # Wymagamy jednocześnie THC, amfetaminy i jej pochodnych,
+    # żeby nie klasyfikować jako small każdej wzmianki o THC.
+    small_scope = bool(re.search(
+        r"celem\s+wykrycia\s+obecnosci\s+thc\b"
+        r".{0,100}amfetamin\w*.{0,80}pochodn\w*",
+        combined
+    ))
 
     panel = None
     panel_source = None
@@ -180,6 +193,10 @@ def analysis_of(cover, docx_text, filename, source):
             panel = "narko-full"
             panel_source = "treść dokumentu"
         elif re.search(r"narko[ _-]?small|skrocon[ya]\s+panel|panel\s+podstawow", combined):
+            panel = "narko-small"
+            panel_source = "treść dokumentu"
+        # Rozpoznanie na podstawie opisu faktycznego zakresu badania.
+        elif small_scope:
             panel = "narko-small"
             panel_source = "treść dokumentu"
         else:
