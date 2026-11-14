@@ -174,6 +174,25 @@ def analysis_of(cover, docx_text, filename, source):
         combined
     ))
 
+    # Jeżeli formularz nie pozwolił rozpoznać badania narkotykowego,
+    # sprawdzamy wyraźne pytanie dotyczące próbek krwi w postanowieniu.
+    narc_from_order = False
+
+    if not narc:
+        order_text = asciify(docx_text)
+
+        # Szukamy pytania o środki odurzające w próbkach krwi.
+        # Nie wystarcza sama wzmianka o ustawie narkotykowej.
+        narc_from_order = bool(re.search(
+            r"czy\s+w\s+zabezpieczon\w*\s+probk\w*\s+krwi"
+            r".{0,350}?"
+            r"srod\w*\s+odurzaj\w*",
+            order_text,
+            re.I | re.S
+        ))
+
+        narc = narc_from_order
+
     # Charakterystyczne sformułowanie ukierunkowanego badania ZLO.
     # Wymagamy jednocześnie THC, amfetaminy i jej pochodnych,
     # żeby nie klasyfikować jako small każdej wzmianki o THC.
@@ -189,6 +208,11 @@ def analysis_of(cover, docx_text, filename, source):
         if source == "BES":
             panel = "narko-full"
             panel_source = "reguła BES"
+        # Postanowienie potwierdza badanie narkotykowe,
+        # ale nie pozwala ustalić konkretnego wariantu panelu.
+        elif narc_from_order:
+            panel = "nieustalony"
+            panel_source = "postanowienie — wariant do weryfikacji"
         elif re.search(r"narko[ _-]?full|pe[lł]ny\s+panel|peln[ya]\s+panel|peiny\s+panel|pe[lł]ny\s+zakres|zakres\s+rozszerzon", combined):
             panel = "narko-full"
             panel_source = "treść dokumentu"
