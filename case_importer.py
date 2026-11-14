@@ -203,6 +203,15 @@ def prepare_biological_cases(data):
                     "message": warning
                 })
 
+            # OCR nie rozpoznał rodzaju materiału biologicznego.
+            # Sprawa pozostaje w imporcie, ale wymaga ręcznej weryfikacji.
+            elif "Nie rozpoznano rodzaju materiału biologicznego" in warning:
+                issues.append({
+                    "field": "material",  # Pole, którego dotyczy problem.
+                    "status": "MISSING",  # Wymagane ręczne uzupełnienie i zatwierdzenie.
+                    "message": warning  # Zachowujemy oryginalny komunikat skanera.
+                })
+
         # Informacje dla przyszłego formularza GUI.
         item["fieldIssues"] = issues
 
