@@ -307,8 +307,23 @@ def scan_file(stem, docx_path, pdf_path):
         # Last fallback for difficult OCR of the first page.
         other = material_of(docx_text[:1600]) if docx_text else material
         material = other
-    if material == ["do ustalenia"]:
-        return None  # Not clearly a biological case; leave existing solid scanner alone.
+    # Sprawdzamy, czy rodzaj materiału pozostał nierozpoznany.
+    material_unknown = material == ["do ustalenia"]
+
+    # Nazwa dokumentu może wskazywać na materiał biologiczny.
+    # Traktujemy ją tylko jako wskazówkę, a nie potwierdzenie.
+    filename_hint = asciify(stem)
+
+    biological_candidate = bool(re.search(
+        r"\b(krew|krwi|mocz|moczu|osocze|surowica|"
+        r"cialko\s+szkliste|tkanka|miesien)\b",
+        filename_hint
+    ))
+
+    # Nie klasyfikujemy dokumentów rzeczowych jako biologicznych.
+    # Ich dalszą kwalifikacją zajmie się osobny mechanizm.
+    if material_unknown and not biological_candidate:
+        return None
 
     # PDF page boundaries reliably separate cover from formal order, while
     # DOCX often reads sample IDs more accurately than OCR embedded in PDF.
@@ -337,6 +352,14 @@ def scan_file(stem, docx_path, pdf_path):
 
     scope = analysis_of(cover, docx_text, stem, source)
     warnings = []
+
+    # Brak odczytanego materiału nie blokuje dalszej analizy.
+    # Informacja zostanie przekazana do weryfikacji w GUI.
+    if material_unknown:
+        warnings.append(
+            "Nie rozpoznano rodzaju materiału biologicznego — sprawdź dokument"
+        )
+
     only_post = sorted(set(post_ids) - set(form_ids)) if form_ids else []
     if only_post:
         warnings.append("Postanowienie zawiera dodatkowe/inne numery próbek: " + ", ".join(only_post))
