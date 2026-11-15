@@ -38,82 +38,84 @@ def evidence_id(row):
         return None
     return str(value).strip().replace(",", ".")
 
-def build_ocr_context(doc, before=1000, after=1000):
+def build_ocr_context(doc, before=150):
     """
-    Buduje fragmenty OCR do ręcznej weryfikacji.
-    Zachowuje tekst przed i za podejrzanym fragmentem.
-    """
-    # Oryginalny OCR skanera, z zachowaniem treści.
-    ocr = re.sub(r"\s+", " ", doc.get("ocrText") or "").strip()
+    Przygotowuje jeden wspólny fragment OCR obejmujący
+    sekcję materiału dowodowego.
 
-    # Fragmenty oznaczone przez skaner jako niejednoznaczne.
+    Zachowuje wszystkich kandydatów do późniejszej
+    weryfikacji w GUI.
+    """
+
+    # Wczytujemy OCR i normalizujemy białe znaki.
+    ocr = re.sub(
+        r"\s+", " ", doc.get("ocrText") or ""
+    ).strip()
+
+    # Pobieramy problemy rozpoznane przez skaner.
     candidates = doc.get("reviewCandidates") or []
     warnings = doc.get("warnings") or []
 
-    # Ujednolicenie polskich znaków na potrzeby wyszukiwania.
-    def fold(value):
-        translation = str.maketrans(
-            "ąćęłńóśźżĄĆĘŁŃÓŚŹŻ",
-            "acelnoszzACELNOSZZ"
+    # Bez ostrzeżeń nie potrzebujemy sekcji weryfikacji.
+    if not ocr or not (candidates or warnings):
+        return []
+
+    # Szukamy początku sekcji materiału dowodowego.
+    heading = re.search(
+        r"materia[łl]\s+dowodow(?:y|ego)\b|"
+        r"materia[łl]\s+do\s+badań|"
+        r"material\s+for\s+examination",
+        ocr,
+        re.IGNORECASE
+    )
+
+    # Domyślnie nie zakładamy, że znaleźliśmy sekcję.
+    context_found = False
+    context = ""
+
+    if heading:
+        # Pobieramy tekst od nagłówka materiału.
+        tail = ocr[heading.start():]
+
+        # Szukamy miejsca, w którym wykaz się kończy.
+        end_match = re.search(
+            r"\bz\s+poważaniem\b|"
+            r"\boświadczenie\s+zleceniobiorcy\b|"
+            r"\b4\s*\.\s*cena\s+netto\b|"
+            r"\bpostanowienie\s+o\s+dopuszczeniu\b",
+            tail,
+            re.IGNORECASE
         )
-        value = value.translate(translation)
-        return "".join(
-            unicodedata.normalize("NFD", char)[0].lower()
-            for char in value
+
+        # Jeśli brak wyraźnego końca, ograniczamy zakres.
+        length = end_match.start() if end_match else min(
+            len(tail), 3000
         )
 
-    searchable = fold(ocr)
-    results = []
+        if length > len(heading.group(0)):
+            start = max(0, heading.start() - before)
+            end = heading.start() + length
 
-    for candidate in candidates:
-        fragment = re.sub(
-            r"\s+", " ", candidate.get("text") or ""
-        ).strip()
+            context = ocr[start:end].strip()
+            context_found = True
 
-        if not fragment:
-            continue
-
-        # Szukamy dokładnego fragmentu, a następnie jego początku.
-        position = searchable.find(fold(fragment))
-        if position < 0:
-            position = searchable.find(fold(fragment[:80]))
-
-        if position >= 0:
-            start = max(0, position - before)
-            end = min(len(ocr), position + len(fragment) + after)
-            context = ocr[start:end]
-        else:
-            # Nie udajemy, że odnaleziono kontekst.
-            # Zachowujemy oryginalną propozycję skanera.
-            context = fragment
-
-        results.append({
-            "reason": candidate.get("reason", ""),
-            "fragment": fragment,
-            "context": context,
-            "contextFound": position >= 0,
-            "status": "REVIEW"
-        })
-
-    # Jeśli skaner ostrzega, lecz nie wskazał konkretnego fragmentu,
-    # pokażemy w GUI okolice nagłówka materiału dowodowego.
-    if warnings and not results and ocr:
-        match = re.search(
-            r"material\s+(?:dowodow\w*|do\s+badan)",
-            searchable
+    # Gdy nie znaleziono sekcji, zachowujemy kandydatów,
+    # ale nie udajemy, że ustaliliśmy ich pozycję w OCR.
+    if not context_found:
+        context = "\n\n".join(
+            item.get("text", "")
+            for item in candidates
+            if item.get("text")
         )
-        if match:
-            start = max(0, match.start() - before)
-            end = min(len(ocr), match.end() + after)
-            results.append({
-                "reason": "Sprawdź sekcję materiału dowodowego",
-                "fragment": ocr[match.start():match.end()],
-                "context": ocr[start:end],
-                "contextFound": True,
-                "status": "REVIEW"
-            })
 
-    return results
+    # Jeden rekord dla całej sekcji dokumentu.
+    return [{
+        "reason": "Weryfikacja materiału dowodowego",
+        "context": context,
+        "contextFound": context_found,
+        "candidates": candidates,
+        "status": "REVIEW"
+    }]
 
 def combine(documents, fid):
     if not isinstance(documents, list):
