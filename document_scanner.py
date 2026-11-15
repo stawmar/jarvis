@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""JARVIS v4 — konserwatywny skaner dowodów rzeczowych z DOCX po OCR.
+"""JARVIS v5 — konserwatywny skaner dowodów rzeczowych z DOCX po OCR.
 
 Kontrakt z case_importer.py pozostaje bez zmian:
     [{"filename", "status", "data": {"source", "caseNumber", "internalNumber",
@@ -60,18 +60,26 @@ PHYSICAL_HEADINGS = re.compile(
     r'przedmioty\s+przekazane\s+do\s+badan)\b', re.I
 )
 
-# Zamknięcie listy nawet wewnątrz jednego ogromnego akapitu OCR.
-# „kserokopię postanowienia” nie kończy wykazu, dlatego szukamy
-# formalnych nagłówków dopiero ZA początkiem listy.
+# Zamknięcie listy przy przejściu do części formalnej dokumentu.
+# Nie kończymy wykazu na stopce z danymi BES, ponieważ OCR
+# może umieścić ją między pozycjami na granicy stron.
 SECTION_END = re.compile(
     r'\b(?:z\s+powazaniem|z\s+wyrazami\s+szacunku|'
     r'oswiadczenie\s+zleceniobiorcy|oswiadczenie\s+zleceniodawcy|'
     r'postanowienie\s+o\s+dopuszczeniu|'
     r'postanowienie\s+w\s+przedmiocie|'
     r'odpis\s+postanowienia|'
-    r'(?<!kserokopii\s)POSTANOWIENIE\b|'
-    r'biuro\s+ekspertyz\s+sadowych\s+sp\.?\s*z\s*o\.?\s*o\.?|'
-    r'regon\s*[:\-]|krs\s*[:\-])', re.I
+    r'(?<!kserokopii\s)POSTANOWIENIE\b)', re.I
+)
+
+# Stopka może wystąpić WEWNĄTRZ wykazu dowodów (np. między nr 12 i 13).
+# Nie kończymy na niej całej sekcji — ucinamy wyłącznie opis bieżącego dowodu.
+DESCRIPTION_FOOTER = re.compile(
+    r'\b(?:biuro\s+ekspertyz\s+sadowych\s+sp\.?\s*z\s*o\.?\s*o\.?|'
+    r'regon\s*[:\-]|krs\s*[:\-]|'
+    r'\(?opis\s+problemu\s*/\s*metoda\s+badawcza|'
+    r'\(?ilosc\s+analiz\b|'
+    r'\(?ilość\s+analiz\b)', re.I
 )
 
 PACKAGE = re.compile(
@@ -252,6 +260,12 @@ def extract_evidence(text, source=None, filename=''):
     for index, (start, end, number, explicit) in enumerate(markers):
         next_start = markers[index + 1][0] if index + 1 < len(markers) else len(section)
         description = clean(section[end:next_start]).strip(' ,;:|–—-')
+        # Stopka/sekcja formularza jest częścią tego samego akapitu OCR,
+        # lecz nie opisem przedmiotu. Nie wolno przy tym odcinać dowodów
+        # pojawiających się dalej (np. nr 13 i 14 na kolejnej stronie).
+        footer = DESCRIPTION_FOOTER.search(norm(description))
+        if footer:
+            description = description[:footer.start()].rstrip(' .;,–—-()')
         # Odrzucamy artefakt „; e” pozostały po znaczniku kolejnej pozycji.
         description = re.sub(r'(?:[;,.]\s*)?[e«•]\s*$', '', description).strip(' ;,')
         # Opis jednego przedmiotu nie może być całym późniejszym dokumentem.
@@ -281,6 +295,21 @@ def extract_evidence(text, source=None, filename=''):
                 candidate(part, 'Opakowanie lub substancja bez jednoznacznego numeru')
     elif not markers and physical_description(section):
         candidate(section[:350], 'Opis materiału rzeczowego bez numeru dowodu')
+
+    # Nazwa pliku NIE jest źródłem dowodów, ale może ujawnić niekompletną
+    # numerację, której OCR nie wskazał jako błędnej (np. 12 z 14 pozycji).
+    # Dotyczy wyraźnych nazw z liczbą >= 3; to wyłącznie sygnał do kontroli.
+    if source == 'BES':
+        hints = [int(value) for value in re.findall(
+            r'(?<!\d)(\d{1,3})\s*x\s*(?:susz|amfa|dop|hasz|mdma)',
+            norm(filename), flags=re.I
+        )]
+        if hints and sum(hints) >= 3 and len(evidence) != sum(hints):
+            warnings.append(
+                f'Nazwa pliku sugeruje {sum(hints)} próbek/pozycji, '
+                f'odczytano {len(evidence)} numerowanych dowodów — '
+                'sprawdź kompletność (liczby te mogą oznaczać różne rzeczy)'
+            )
 
     if candidates:
         warnings.append('Niejednoznaczne fragmenty OCR — sprawdź reviewCandidates')
