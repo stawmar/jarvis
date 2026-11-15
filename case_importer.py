@@ -38,7 +38,7 @@ def evidence_id(row):
         return None
     return str(value).strip().replace(",", ".")
 
-def build_ocr_context(doc, before=150):
+def build_ocr_context(doc, before=150, after=20000):
     """
     Przygotowuje jeden wspólny fragment OCR obejmujący
     sekcję materiału dowodowego.
@@ -72,6 +72,8 @@ def build_ocr_context(doc, before=150):
     # Domyślnie nie zakładamy, że znaleźliśmy sekcję.
     context_found = False
     context = ""
+    # Dodatkowy tekst występujący za sekcją dowodów.
+    context_after = ""
 
     if heading:
         # Pobieramy tekst od nagłówka materiału.
@@ -98,6 +100,7 @@ def build_ocr_context(doc, before=150):
 
             context = ocr[start:end].strip()
             context_found = True
+            context_after = ocr[end:end + after].strip()
 
     # Gdy nie znaleziono sekcji, zachowujemy kandydatów,
     # ale nie udajemy, że ustaliliśmy ich pozycję w OCR.
@@ -112,6 +115,7 @@ def build_ocr_context(doc, before=150):
     return [{
         "reason": "Weryfikacja materiału dowodowego",
         "context": context,
+        "contextAfter": context_after,
         "contextFound": context_found,
         "candidates": candidates,
         "status": "REVIEW"
