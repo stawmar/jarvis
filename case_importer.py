@@ -14,6 +14,8 @@ Nie wyciąga wniosku DOP z braku chromatogramu i nie zgaduje mas brutto.
 import json
 from collections import Counter, defaultdict
 from pathlib import Path
+import re
+import unicodedata
 
 DOCUMENTS_FILE = Path("document_scan.json")
 FID_FILE = Path("cases/fid_scan.json")
@@ -36,6 +38,82 @@ def evidence_id(row):
         return None
     return str(value).strip().replace(",", ".")
 
+def build_ocr_context(doc, before=1000, after=1000):
+    """
+    Buduje fragmenty OCR do ręcznej weryfikacji.
+    Zachowuje tekst przed i za podejrzanym fragmentem.
+    """
+    # Oryginalny OCR skanera, z zachowaniem treści.
+    ocr = re.sub(r"\s+", " ", doc.get("ocrText") or "").strip()
+
+    # Fragmenty oznaczone przez skaner jako niejednoznaczne.
+    candidates = doc.get("reviewCandidates") or []
+    warnings = doc.get("warnings") or []
+
+    # Ujednolicenie polskich znaków na potrzeby wyszukiwania.
+    def fold(value):
+        translation = str.maketrans(
+            "ąćęłńóśźżĄĆĘŁŃÓŚŹŻ",
+            "acelnoszzACELNOSZZ"
+        )
+        value = value.translate(translation)
+        return "".join(
+            unicodedata.normalize("NFD", char)[0].lower()
+            for char in value
+        )
+
+    searchable = fold(ocr)
+    results = []
+
+    for candidate in candidates:
+        fragment = re.sub(
+            r"\s+", " ", candidate.get("text") or ""
+        ).strip()
+
+        if not fragment:
+            continue
+
+        # Szukamy dokładnego fragmentu, a następnie jego początku.
+        position = searchable.find(fold(fragment))
+        if position < 0:
+            position = searchable.find(fold(fragment[:80]))
+
+        if position >= 0:
+            start = max(0, position - before)
+            end = min(len(ocr), position + len(fragment) + after)
+            context = ocr[start:end]
+        else:
+            # Nie udajemy, że odnaleziono kontekst.
+            # Zachowujemy oryginalną propozycję skanera.
+            context = fragment
+
+        results.append({
+            "reason": candidate.get("reason", ""),
+            "fragment": fragment,
+            "context": context,
+            "contextFound": position >= 0,
+            "status": "REVIEW"
+        })
+
+    # Jeśli skaner ostrzega, lecz nie wskazał konkretnego fragmentu,
+    # pokażemy w GUI okolice nagłówka materiału dowodowego.
+    if warnings and not results and ocr:
+        match = re.search(
+            r"material\s+(?:dowodow\w*|do\s+badan)",
+            searchable
+        )
+        if match:
+            start = max(0, match.start() - before)
+            end = min(len(ocr), match.end() + after)
+            results.append({
+                "reason": "Sprawdź sekcję materiału dowodowego",
+                "fragment": ocr[match.start():match.end()],
+                "context": ocr[start:end],
+                "contextFound": True,
+                "status": "REVIEW"
+            })
+
+    return results
 
 def combine(documents, fid):
     if not isinstance(documents, list):
@@ -109,6 +187,14 @@ def combine(documents, fid):
             "internalNumber": extracted.get("internalNumber"),
             "source": extracted.get("source"),
             "sourceDocument": doc.get("filename"),
+            # Fragmenty OCR przygotowane do weryfikacji w GUI.
+            "ocrReview": build_ocr_context(doc),
+
+            # Ostrzeżenia pochodzące z document_scanner.py.
+            "ocrWarnings": doc.get("warnings", []),
+
+            # Pełny tekst OCR do ewentualnego podglądu i kopiowania.
+            "sourceOcrText": doc.get("ocrText", ""),
             "evidenceFromOcr": evidence,
             # Lista próbek biologicznych — na razie pusta.
             # Ta sama sprawa może zawierać również materiał biologiczny.
