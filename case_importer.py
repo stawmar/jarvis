@@ -89,7 +89,7 @@ def build_ocr_context(doc, before=150):
 
         # Jeśli brak wyraźnego końca, ograniczamy zakres.
         length = end_match.start() if end_match else min(
-            len(tail), 3000
+            len(tail), 20000
         )
 
         if length > len(heading.group(0)):
