@@ -57,7 +57,7 @@ def build_ocr_context(doc, before=150, after=20000):
     warnings = doc.get("warnings") or []
 
     # Bez ostrzeżeń nie potrzebujemy sekcji weryfikacji.
-    if not ocr or not (candidates or warnings):
+    if not ocr:
         return []
 
     # Szukamy początku sekcji materiału dowodowego.

@@ -22,6 +22,81 @@ CASES_DIR.mkdir(exist_ok=True)
 # ---------------------------------------------------------
 # Funkcje pomocnicze
 # ---------------------------------------------------------
+def show_ocr_review():
+    """Wyświetla podgląd materiału dowodowego z OCR."""
+
+    # Pobieramy aktualnie otwartą sprawę.
+    case_path = st.session_state.get("case_file")
+
+    if not case_path or not Path(case_path).is_file():
+        return
+
+    # Odczytujemy zapisane dane sprawy.
+    case_data = json.loads(
+        Path(case_path).read_text(encoding="utf-8")
+    )
+
+    # Najpierw sprawdzamy, czy OCR jest już zapisany w sprawie.
+    reviews = case_data.get("ocrReview") or []
+    warnings = case_data.get("ocrWarnings") or []
+
+    # Starsze sprawy mogą nie mieć jeszcze danych OCR.
+    # W takim przypadku szukamy ich w podglądzie importu,
+    # wyłącznie po dokładnej nazwie dokumentu źródłowego.
+    if not reviews:
+        preview_path = BASE_DIR / "case_import_preview.json"
+        source_document = case_data.get("sourceDocument")
+
+        if preview_path.is_file() and source_document:
+            preview = json.loads(
+                preview_path.read_text(encoding="utf-8")
+            )
+
+            for item in preview.get("cases", []):
+                if item.get("sourceDocument") == source_document:
+                    reviews = item.get("ocrReview") or []
+                    warnings = item.get("ocrWarnings") or []
+                    break
+
+    # Nie wyświetlamy pustego panelu.
+    if not reviews:
+        st.info("Brak podglądu OCR dla tej sprawy.")
+        return
+
+    with st.expander("📄 Dokument źródłowy — materiał dowodowy OCR"):
+
+        # Informacja o ewentualnych problemach.
+        for warning in warnings:
+            st.warning(warning)
+
+        # Aktualnie mamy jeden zbiorczy kontekst.
+        section = reviews[0]
+
+        st.markdown("**Sekcja materiału dowodowego**")
+
+        # st.code umożliwia zaznaczanie i kopiowanie tekstu.
+        st.code(section.get("context", ""), language=None)
+
+        # Wyświetlamy liczbę kandydatów wymagających kontroli.
+        candidates = section.get("candidates") or []
+
+        if candidates:
+            st.markdown(
+                f"**Niejednoznaczne fragmenty: {len(candidates)}**"
+            )
+
+            for index, candidate in enumerate(candidates, 1):
+                st.write(
+                    f"{index}. {candidate.get('reason', '')}"
+                )
+                st.code(candidate.get("text", ""), language=None)
+
+        # Tekst po końcu wykazu pokazujemy osobno.
+        context_after = section.get("contextAfter", "")
+
+        if context_after:
+            with st.expander("Dalsza treść dokumentu"):
+                st.code(context_after, language=None)
 
 def update_biological_sample(index, widget_key):
     """Zapisuje numer próbki po zmianie pola w Streamlit."""
@@ -987,6 +1062,8 @@ if st.session_state.step == 1:
 elif st.session_state.step == 2:
 
     st.subheader("Dowody rzeczowe")
+
+    show_ocr_review()
 
     evidence = st.session_state.evidence
     index = st.session_state.evidence_index
