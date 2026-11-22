@@ -44,19 +44,48 @@ def show_ocr_review():
     # W takim przypadku szukamy ich w podglądzie importu,
     # wyłącznie po dokładnej nazwie dokumentu źródłowego.
     if not reviews:
+        # Odczytujemy wynik importu.
         preview_path = BASE_DIR / "case_import_preview.json"
-        source_document = case_data.get("sourceDocument")
 
-        if preview_path.is_file() and source_document:
+        if preview_path.is_file():
             preview = json.loads(
                 preview_path.read_text(encoding="utf-8")
             )
 
-            for item in preview.get("cases", []):
-                if item.get("sourceDocument") == source_document:
-                    reviews = item.get("ocrReview") or []
-                    warnings = item.get("ocrWarnings") or []
-                    break
+            # Dopasowujemy sprawę po sygnaturze ORAZ numerze wewnętrznym.
+            # Sama sygnatura nie wystarczy — może występować w kilku dokumentach.
+            matches = [
+                item for item in preview.get("cases", [])
+                if item.get("caseNumber") == case_data.get("caseNumber")
+                   and item.get("internalNumber") == case_data.get("internalNumber")
+            ]
+
+            if len(matches) == 1:
+                imported = matches[0]
+
+                # Uzupełniamy zapis sprawy o dane źródłowe.
+                for field in (
+                        "sourceDocument",
+                        "ocrReview",
+                        "ocrWarnings",
+                        "sourceOcrText",
+                ):
+                    case_data[field] = imported.get(field)
+
+                # Zapisujemy powiązanie na stałe.
+                Path(case_path).write_text(
+                    json.dumps(case_data, ensure_ascii=False, indent=2),
+                    encoding="utf-8"
+                )
+
+                reviews = case_data.get("ocrReview") or []
+                warnings = case_data.get("ocrWarnings") or []
+
+            elif len(matches) > 1:
+                st.warning(
+                    "Kilka dokumentów pasuje do sprawy. "
+                    "Nie można jednoznacznie przypisać OCR."
+                )
 
     # Nie wyświetlamy pustego panelu.
     if not reviews:
