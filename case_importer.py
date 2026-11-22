@@ -47,10 +47,11 @@ def build_ocr_context(doc, before=150, after=20000):
     weryfikacji w GUI.
     """
 
-    # Wczytujemy OCR i normalizujemy białe znaki.
-    ocr = re.sub(
-        r"\s+", " ", doc.get("ocrText") or ""
-    ).strip()
+    # Pobieramy oryginalny tekst OCR z dokumentu.
+    ocr = doc.get("ocrText") or ""
+
+    # Ujednolicamy znaki końca linii, ale nie usuwamy ich.
+    ocr = ocr.replace("\r\n", "\n").replace("\r", "\n").strip()
 
     # Pobieramy problemy rozpoznane przez skaner.
     candidates = doc.get("reviewCandidates") or []
