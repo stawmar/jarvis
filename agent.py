@@ -103,8 +103,12 @@ def show_ocr_review():
 
         st.markdown("**Sekcja materiału dowodowego**")
 
-        # st.code umożliwia zaznaczanie i kopiowanie tekstu.
-        st.code(section.get("context", ""), language=None)
+        # Zawijamy długie linie do szerokości dostępnego panelu.
+        st.code(
+            section.get("context", ""),
+            language=None,
+            wrap_lines=True
+        )
 
         # Wyświetlamy liczbę kandydatów wymagających kontroli.
         candidates = section.get("candidates") or []
@@ -118,15 +122,19 @@ def show_ocr_review():
                 st.write(
                     f"{index}. {candidate.get('reason', '')}"
                 )
-                st.code(candidate.get("text", ""), language=None)
+                st.code(candidate.get("text", ""), language=None, wrap_lines=True)
 
         # Tekst po końcu wykazu pokazujemy osobno.
         context_after = section.get("contextAfter", "")
 
         if context_after:
             with st.expander("Dalsza treść dokumentu"):
-                st.code(context_after, language=None)
-
+                # Dalsza treść dokumentu również z zawijaniem wierszy.
+                st.code(
+                    context_after,
+                    language=None,
+                    wrap_lines=True
+                )
 def update_biological_sample(index, widget_key):
     """Zapisuje numer próbki po zmianie pola w Streamlit."""
 
